@@ -2,6 +2,9 @@ import express from "express";
 import bodyParser from "body-parser";
 import pg from "pg";
 
+const app = express();
+const port = 3000;
+
 const db = new pg.Client({
   user: "postgres",
   host: "localhost",
@@ -9,15 +12,10 @@ const db = new pg.Client({
   password: "638726",
   port: "5432"
 });
-
 db.connect();
-
-const app = express();
-const port = 3000;
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
-
 
 //All valid countries
 async function validCountry() {
@@ -54,7 +52,6 @@ app.get("/", async (req, res) => {
   });
 });
 
-
 app.post("/add", async (req, res) => {
   const user_input = req.body["country"].toUpperCase();
   const checkIf1 = await db.query("select count(*) from visited_countries where country_code = $1", [user_input]);
@@ -78,7 +75,6 @@ app.post("/add", async (req, res) => {
     error: error,
   });
 });
-
 
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
