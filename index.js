@@ -43,6 +43,19 @@ async function totalVisitedCountry() {
   return result.rows[0].count;
 };
 
+//get country code when country name entered
+async function getCountryCode(fullCountry){
+  const result = await db.query("select country_code from countries where upper(country_name) like upper($1 || '%')", [fullCountry]);
+  console.log(result.rows[0]);
+  if (result.rows[0]){
+    return result.rows[0].country_code;
+  } else {
+    return fullCountry;
+  }
+  
+  
+};
+
 app.get("/", async (req, res) => {
   const total_visited_country_count = await totalVisitedCountry();
   const visited_country_code = await checkVisited();
@@ -54,21 +67,24 @@ app.get("/", async (req, res) => {
 
 app.post("/add", async (req, res) => {
   const user_input = req.body["country"].toUpperCase();
-  const checkIf1 = await db.query("select count(*) from visited_countries where country_code = $1", [user_input]);
+  const enteredCountry = await getCountryCode(user_input);
+  console.log(enteredCountry);
+  const checkIf = await db.query("select count(*) from visited_countries where country_code = $1", [enteredCountry]);
   const countries = await validCountry();
-  const total_visited_country_count = await totalVisitedCountry();
-  const visited_country_code = await checkVisited();
+  
   let error;
 
-  if (checkIf1.rows[0].count === '0') {
-    if (countries.includes(`${user_input}`)) {
-      await db.query("insert into visited_countries (country_code) values ($1)", [user_input]);
+  if (checkIf.rows[0].count === '0') {
+    if (countries.includes(`${enteredCountry}`)) {
+      await db.query("insert into visited_countries (country_code) values ($1)", [enteredCountry]);
     } else {
-      error = "Invalid country code entered.";
+      error = "Invalid country entered. Please try again...";
     }
   } else {
-    error = "Country already exists.";
+    error = "Country already exists";
   }
+  const total_visited_country_count = await totalVisitedCountry();
+  const visited_country_code = await checkVisited();
   res.render("index.ejs", {
     total: total_visited_country_count,
     countries: visited_country_code,
