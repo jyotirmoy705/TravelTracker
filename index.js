@@ -10,86 +10,108 @@ const db = new pg.Client({
   host: "localhost",
   database: "jm",
   password: "638726",
-  port: "5432"
+  port: 5432,
 });
 db.connect();
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
-//All valid countries
-async function validCountry() {
-  const result = await db.query("select country_code from countries");
-  let fixed_country_code = [];
+let currentUserId = 1;
+
+async function userRecord() {
+  const result = await db.query("select * from users");
+  let userData = [];
   result.rows.forEach((i) => {
-    fixed_country_code.push(i.country_code);
+    userData.push(i);
   });
-  return fixed_country_code;
-};
+  return userData;
+}
 
-//All visited countries
-async function checkVisited() {
-  const result = await db.query("select country_code from visited_countries");
-  let visited_country_code = [];
-  result.rows.forEach((i) => {
-    visited_country_code.push(i.country_code);
+async function checkVisisted() {
+  const result = await db.query("SELECT country_code FROM visited_countries where user_id = $1", [currentUserId]);
+  let countries = [];
+  result.rows.forEach((country) => {
+    countries.push(country.country_code);
   });
-  return visited_country_code;
-};
-
-//No of visited countries
-async function totalVisitedCountry() {
-  const result = await db.query("select count(*) from visited_countries");
-  return result.rows[0].count;
-};
-
-//get country code when country name entered
-async function getCountryCode(fullCountry){
-  const result = await db.query("select country_code from countries where upper(country_name) like upper($1 || '%')", [fullCountry]);
-  console.log(result.rows[0]);
-  if (result.rows[0]){
-    return result.rows[0].country_code;
-  } else {
-    return fullCountry;
-  }
-  
-  
-};
+  return countries;
+}
+async function getCurrentUser() {
+  const result = await db.query("select * from users");
+  return result.rows.find((i) => i.id == currentUserId);
+}
 
 app.get("/", async (req, res) => {
-  const total_visited_country_count = await totalVisitedCountry();
-  const visited_country_code = await checkVisited();
+  const countries = await checkVisisted();
+  const currentUserColor = await getCurrentUser();
   res.render("index.ejs", {
-    total: total_visited_country_count,
-    countries: visited_country_code,
+    countries: countries,
+    total: countries.length,
+    users: await userRecord(),
+    color: currentUserColor.color,
   });
 });
-
 app.post("/add", async (req, res) => {
-  const user_input = req.body["country"].toUpperCase();
-  const enteredCountry = await getCountryCode(user_input);
-  console.log(enteredCountry);
-  const checkIf = await db.query("select count(*) from visited_countries where country_code = $1", [enteredCountry]);
-  const countries = await validCountry();
-  
-  let error;
+  const input = req.body["country"];
 
-  if (checkIf.rows[0].count === '0') {
-    if (countries.includes(`${enteredCountry}`)) {
-      await db.query("insert into visited_countries (country_code) values ($1)", [enteredCountry]);
-    } else {
-      error = "Invalid country entered. Please try again...";
+  try {
+    const result = await db.query(
+      "SELECT country_code FROM countries WHERE LOWER(country_name) LIKE ($1 || '%');",
+      [input.toLowerCase()]
+    );
+
+    const data = result.rows[0];
+    const countryCode = data.country_code;
+    try {
+      await db.query(
+        "INSERT INTO visited_countries (country_code, user_id) VALUES ($1, $2)",
+        [countryCode, currentUserId]
+      );
+      res.redirect("/");
+    } catch (err) {
+      console.log(err);
+      const error = "Duplicate Entry. Try again";
+    const countries = await checkVisisted();
+    const currentUserColor = await getCurrentUser();
+    res.render("index.ejs", {
+      countries: countries,
+      total: countries.length,
+      users: await userRecord(),
+      color: currentUserColor.color,
+      error: error,
+    });
     }
-  } else {
-    error = "Country already exists";
+  } catch (err) {
+    console.log(err);
+    const error = "Invalid entry. Try again";
+    const countries = await checkVisisted();
+    const currentUserColor = await getCurrentUser();
+    res.render("index.ejs", {
+      countries: countries,
+      total: countries.length,
+      users: await userRecord(),
+      color: currentUserColor.color,
+      error: error,
+    });
   }
-  const total_visited_country_count = await totalVisitedCountry();
-  const visited_country_code = await checkVisited();
-  res.render("index.ejs", {
-    total: total_visited_country_count,
-    countries: visited_country_code,
-    error: error,
-  });
+});
+app.post("/user", async (req, res) => {
+  if (req.body.add === "new") {
+    res.render("new.ejs");
+  } else {
+    currentUserId = req.body.user;
+    res.redirect("/");
+  }
+});
+
+app.post("/new", async (req, res) => {
+  //Hint: The RETURNING keyword can return the data that was inserted.
+  //https://www.postgresql.org/docs/current/dml-returning.html
+  const inputName = req.body.name;
+  const inputColor = req.body.color;
+  const result = await db.query("insert into users(name, color) values($1, $2) returning *;", [inputName, inputColor]);
+  const currentUserId = result.rows[0].id;
+  res.redirect("/");
 });
 
 app.listen(port, () => {
